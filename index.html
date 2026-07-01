@@ -209,7 +209,7 @@
     <div id="today-sess"></div>
   </div>
   <div class="quick">
-    <button class="qbtn w" onclick="openSheet('weigh')">＋ Vej dig</button>
+    <button class="qbtn w" onclick="openSheet('weigh')">＋ Mål dig</button>
     <button class="qbtn t" onclick="openSheet('train')">＋ Log pas</button>
   </div>
   <div class="card">
@@ -252,8 +252,9 @@
     <div class="chart" id="chart"></div>
     <div id="goal-hint"></div>
   </div>
-  <button class="btn sun" onclick="openSheet('weigh')">＋ Registrér vægt</button>
-  <div class="card"><h3>Registreringer</h3><div class="list" id="weight-list"></div></div>
+  <button class="btn sun" onclick="openSheet('weigh')">＋ Registrér måling</button>
+  <div class="card"><h3>Vægt-registreringer</h3><div class="list" id="weight-list"></div></div>
+  <div id="waist-section"></div>
 </div></section>
 
 <!-- KOST -->
@@ -404,16 +405,16 @@ function catchUp(type){
 
 /* ---------- content: strength, diet, supplements ---------- */
 const STRENGTH={
- A:[{n:'Knæbøjning til stol',s:'3 × 8–12',c:'Sæt dig let ned mod en stol og rejs dig. Ryggen lang.'},
-    {n:'Skub (mod væg → bord → gulv)',s:'3 × 6–10',c:'Vælg en højde du kan styre med god teknik.'},
-    {n:'Roning med elastik',s:'3 × 10–12',c:'Træk albuerne bagud, klem skulderbladene.'},
-    {n:'Støttede udfald',s:'3 × 8 pr. ben',c:'Hold fast i noget for balancen i starten.'},
-    {n:'Planke',s:'3 × 20–40 sek',c:'Lige linje fra hæl til hoved.'}],
- B:[{n:'Hofteløft (glute bridge)',s:'3 × 12',c:'Pres hælene i gulvet, klem ballerne i toppen.'},
-    {n:'Skulderpres, lette vægte',s:'3 × 10',c:'Pres roligt op, undgå at svaje i ryggen.'},
-    {n:'Lat-træk / nedtræk med elastik',s:'3 × 10–12',c:'Træk ned mod brystet, lange arme i toppen.'},
-    {n:'Hip hinge / let dødløft',s:'3 × 10',c:'Skub hoften bagud, ret ryg. Start meget let.'},
-    {n:'Sideplanke',s:'3 × 20 sek pr. side',c:'Hoften løftet, krop i én linje.'}]
+ A:[{n:'Squat',s:'3 × 8–12',c:'Hoften tilbage og ned, ryggen lang. Brug evt. en stol som dybde-guide i starten.'},
+    {n:'Push-ups',s:'3 × 6–10',c:'Start mod væg eller bord, arbejd mod gulvet. Krop i én lige linje.'},
+    {n:'Rows',s:'3 × 10–12',c:'Med elastik eller hantel. Træk albuerne bagud, klem skulderbladene sammen.'},
+    {n:'Lunges',s:'3 × 8 pr. ben',c:'Skridt frem, sænk bagerste knæ mod gulvet. Støt dig i starten.'},
+    {n:'Plank',s:'3 × 20–40 sek',c:'Lige linje fra hæl til hoved, spænd maven.'}],
+ B:[{n:'Glute bridge',s:'3 × 12',c:'Pres hælene i gulvet, klem ballerne i toppen.'},
+    {n:'Shoulder press',s:'3 × 10',c:'Lette vægte. Pres roligt op, undgå at svaje i ryggen.'},
+    {n:'Lat pulldown',s:'3 × 10–12',c:'Med elastik eller i maskine. Træk ind mod brystet, lange arme til slut.'},
+    {n:'Deadlift',s:'3 × 10',c:'Hip hinge: skub hoften bagud, ret ryg. Start meget let.'},
+    {n:'Side plank',s:'3 × 20 sek pr. side',c:'Hoften løftet, krop i én linje.'}]
 };
 const KOST_PRINCIPLES=[
  ['Protein til hvert måltid','Æg, fisk, fjerkræ, bælgfrugter, skyr. Bevarer muskel når du taber dig.'],
@@ -437,7 +438,7 @@ const DEFAULT_SUPPS=[
 ];
 
 /* ---------- state ---------- */
-let S=null,W=[],T=[],M={},PS={done:{},skip:{},weekRewarded:{}},SUPPS=[],SUPPLOG={},ANEC={shown:0};
+let S=null,W=[],T=[],M={},PS={done:{},skip:{},weekRewarded:{}},SUPPS=[],SUPPLOG={},ANEC={shown:0},WAIST=[];
 const DEFAULT_S={ name:'Erik',birth:'1965-07-18',startWeight:125,height:185,raceDate:'2030-09-29',goalWeight:null,
   why:'Komme i bedre form, gøre noget ved vægten, styrke kroppen og lægge livsstilen varigt om. Berlin er målstregen — den varige forandring er rejsen.' };
 const MS=[{id:'m5k',label:'Første 5 km uden stop'},{id:'m10k',label:'Første 10 km'},{id:'half',label:'Første halvmaraton (21,1 km)'},{id:'sign',label:'Tilmeldt Berlin Marathon'},{id:'full',label:'Berlin Marathon fuldført'}];
@@ -572,6 +573,43 @@ function renderWeight(){
   drawChart();
   const list=document.getElementById('weight-list');
   list.innerHTML = W.length? [...W].sort((a,b)=>a.date<b.date?1:-1).map(e=>`<div class="item"><div class="ic">⚖︎</div><div class="mn"><div class="t num">${(+e.kg).toLocaleString('da-DK')} kg</div><div class="d">${fmtDate(e.date)}</div></div><button class="del" onclick="delWeight('${e.id}')">×</button></div>`).join('') : '<div class="empty">Ingen registreringer endnu.</div>';
+  renderWaist();
+}
+const sortedWaist=()=>[...WAIST].sort((a,b)=>a.date<b.date?-1:1);
+function renderWaist(){
+  const host=document.getElementById('waist-section'); if(!host) return;
+  const sc=sortedWaist();
+  let metric,deltaHtml='';
+  if(!sc.length){ metric='—'; }
+  else{
+    const cur=sc[sc.length-1].cm, first=sc[0].cm; metric=(+cur).toLocaleString('da-DK');
+    const d=+(cur-first).toFixed(1);
+    if(sc.length<2) deltaHtml='<span style="color:var(--muted)">Din første måling — mål igen for at følge udviklingen.</span>';
+    else if(d<0) deltaHtml=`<span style="color:var(--moss);font-weight:600">▼ ${Math.abs(d).toLocaleString('da-DK')} cm siden start</span>`;
+    else if(d>0) deltaHtml=`<span style="color:var(--ember);font-weight:600">▲ ${d.toLocaleString('da-DK')} cm siden start</span>`;
+    else deltaHtml='<span style="color:var(--muted)">Samme som start</span>';
+  }
+  const chart = sc.length>=2 ? miniChart(sc.map(e=>({date:e.date,v:+e.cm})),'var(--violet)')
+    : `<div class="empty">${sc.length? 'Mindst to målinger giver en kurve.' : 'Ingen livvidde registreret endnu. Mål om morgenen, afslappet, ved navlen.'}</div>`;
+  const items = sc.length? [...WAIST].sort((a,b)=>a.date<b.date?1:-1).map(e=>`<div class="item"><div class="ic">📏</div><div class="mn"><div class="t num">${(+e.cm).toLocaleString('da-DK')} cm</div><div class="d">${fmtDate(e.date)}</div></div><button class="del" onclick="delWaist('${e.id}')">×</button></div>`).join('') : '';
+  host.innerHTML=`
+    <div class="metric" style="padding:8px 0 4px"><div class="v num" style="font-size:44px">${metric}<small>${sc.length?'cm':''}</small></div><div class="delta" style="margin-top:6px">${deltaHtml}</div></div>
+    <div class="card"><h3>Livvidde</h3><div class="chart" style="margin-top:8px">${chart}</div></div>
+    ${items?`<div class="card"><h3>Livvidde-registreringer</h3><div class="list">${items}</div></div>`:''}`;
+}
+// Reusable mini line chart for a series of {date, v}
+function miniChart(data, color){
+  const W_=320,H=120,pl=8,pr=8,pt=12,pb=18; const ys=data.map(e=>e.v);
+  let mn=Math.min(...ys),mx=Math.max(...ys); const pad=Math.max(0.5,(mx-mn)*0.2); mn-=pad; mx+=pad;
+  const X=i=>pl+(W_-pl-pr)*(data.length===1?.5:i/(data.length-1));
+  const Y=v=>pt+(H-pt-pb)*(1-(v-mn)/(mx-mn||1));
+  const line=data.map((e,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(e.v).toFixed(1)}`).join(' ');
+  const area=`M${X(0).toFixed(1)} ${(H-pb).toFixed(1)} `+data.map((e,i)=>`L${X(i).toFixed(1)} ${Y(e.v).toFixed(1)}`).join(' ')+` L${X(data.length-1).toFixed(1)} ${(H-pb)} Z`;
+  const dots=data.map((e,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(e.v).toFixed(1)}" r="3" fill="#fff" stroke="${color}" stroke-width="2"/>`).join('');
+  return `<svg viewBox="0 0 ${W_} ${H}"><defs><linearGradient id="wa2" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#7A5BD6" stop-opacity=".2"/><stop offset="1" stop-color="#7A5BD6" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#wa2)"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>${dots}
+    <text x="${pl}" y="${H-4}" font-size="9" fill="var(--muted)" font-family="Space Grotesk">${shortDate(data[0].date)}</text>
+    <text x="${W_-pr}" y="${H-4}" text-anchor="end" font-size="9" fill="var(--muted)" font-family="Space Grotesk">${shortDate(data[data.length-1].date)}</text></svg>`;
 }
 function drawChart(){
   const sw=sortedW(); const host=document.getElementById('chart');
@@ -694,10 +732,12 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t
 function refresh(){ renderHome(); renderPlan(); renderWeight(); renderKost(); renderJourney(); }
 
 function openSheet(kind,arg){ const b=document.getElementById('sheet-body'); const td=todayISO();
-  if(kind==='weigh'){ b.innerHTML=`<h2>Registrér vægt</h2><p class="sub">Vej dig gerne på samme tid — fx om morgenen.</p>
+  if(kind==='weigh'){ b.innerHTML=`<h2>Registrér måling</h2><p class="sub">Mål dig gerne på samme tid — fx om morgenen. Udfyld det, du har. Begge felter er ikke krav.</p>
     <div class="row2"><div class="field"><label>Vægt (kg)</label><input id="i-kg" type="number" inputmode="decimal" step="0.1" placeholder="f.eks. 124,5"></div>
-    <div class="field"><label>Dato</label><input id="i-wd" type="date" value="${td}"></div></div>
-    <button class="btn sun" onclick="submitWeigh()">Gem registrering</button>`; setTimeout(()=>{const e=document.getElementById('i-kg');e&&e.focus();},120); }
+    <div class="field"><label>Livvidde (cm)</label><input id="i-cm" type="number" inputmode="decimal" step="0.5" placeholder="f.eks. 118"></div></div>
+    <div class="field"><label>Dato</label><input id="i-wd" type="date" value="${td}"></div>
+    <p class="sub" style="margin-top:6px">Livvidde måles afslappet omkring maven, ca. ved navlen — samme sted hver gang.</p>
+    <button class="btn sun" onclick="submitWeigh()">Gem måling</button>`; setTimeout(()=>{const e=document.getElementById('i-kg');e&&e.focus();},120); }
   else if(kind==='train'){ const ed=arg?T.find(x=>x.id===arg):null;
     b.innerHTML=`<h2>${ed?'Ret pas':'Log pas'}</h2><p class="sub">Alt tæller — også en gåtur.</p>
     <input type="hidden" id="i-eid" value="${ed?ed.id:''}">
@@ -741,7 +781,14 @@ function openSheet(kind,arg){ const b=document.getElementById('sheet-body'); con
   document.getElementById('scrim').classList.add('on');
 }
 function closeSheet(){ document.getElementById('scrim').classList.remove('on'); }
-function submitWeigh(){ const kg=document.getElementById('i-kg').value,d=document.getElementById('i-wd').value; if(!kg||!d){alert('Skriv en vægt og en dato.');return;} addWeight(kg,d); closeSheet(); go('weight'); }
+function submitWeigh(){ const kg=document.getElementById('i-kg').value,cm=document.getElementById('i-cm').value,d=document.getElementById('i-wd').value;
+  if(!d){alert('Vælg en dato.');return;}
+  if(!kg&&!cm){alert('Skriv en vægt eller en livvidde.');return;}
+  if(kg) addWeight(kg,d);
+  if(cm) addWaist(cm,d);
+  closeSheet(); go('weight'); }
+async function addWaist(cm,date){ WAIST.push({id:uid(),cm:+cm,date}); await save('waist',WAIST); refresh(); }
+async function delWaist(id){ WAIST=WAIST.filter(e=>e.id!==id); await save('waist',WAIST); refresh(); }
 function submitTrain(){ const eid=document.getElementById('i-eid').value;
   const o={type:document.getElementById('i-type').value,km:document.getElementById('i-km').value||null,min:document.getElementById('i-min').value||null,date:document.getElementById('i-td').value,note:document.getElementById('i-note').value.trim()||null};
   if(!o.date){alert('Vælg en dato.');return;}
@@ -755,7 +802,7 @@ function demoReward(tier){ const anec = tier==='lille' ? (ANECDOTES[ANEC.shown%A
 /* ---------- backup ---------- */
 function exportData(){
   const data={ _app:'vejen-til-berlin', _v:2, exported:new Date().toISOString(),
-    settings:S, weights:W, workouts:T, milestones:M, planState:PS, supplements:SUPPS, suppLog:SUPPLOG, anecdotes:ANEC };
+    settings:S, weights:W, waist:WAIST, workouts:T, milestones:M, planState:PS, supplements:SUPPS, suppLog:SUPPLOG, anecdotes:ANEC };
   try{
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
@@ -772,6 +819,7 @@ function importData(file){ if(!file)return; const r=new FileReader();
     if(d.planState){ PS=d.planState; PS.done=PS.done||{};PS.skip=PS.skip||{};PS.weekRewarded=PS.weekRewarded||{}; await save('planState',PS); }
     if(Array.isArray(d.supplements)){ SUPPS=d.supplements; await save('supplements',SUPPS); }
     if(d.suppLog){ SUPPLOG=d.suppLog; await save('suppLog',SUPPLOG); }
+    if(Array.isArray(d.waist)){ WAIST=d.waist; await save('waist',WAIST); }
     if(d.anecdotes){ ANEC=d.anecdotes; ANEC.shown=ANEC.shown||0; await save('anecdotes',ANEC); }
     refresh(); closeSheet(); alert('Sikkerhedskopi importeret.');
   }catch(e){ alert('Filen kunne ikke læses. Vælg en sikkerhedskopi fra denne app.'); } };
@@ -786,6 +834,7 @@ function importData(file){ if(!file)return; const r=new FileReader();
   PS=await load('planState',{done:{},skip:{},weekRewarded:{}}); PS.done=PS.done||{}; PS.skip=PS.skip||{}; PS.weekRewarded=PS.weekRewarded||{};
   SUPPS=await load('supplements',null); if(SUPPS===null){SUPPS=DEFAULT_SUPPS.slice();await save('supplements',SUPPS);}
   SUPPLOG=await load('suppLog',{});
+  WAIST=await load('waist',[]);
   ANEC=await load('anecdotes',{shown:0}); ANEC.shown=ANEC.shown||0;
   refresh();
 })();
